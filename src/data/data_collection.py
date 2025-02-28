@@ -11,6 +11,8 @@ The module handles API connections, error handling, and data storage.
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Union, Optional, Tuple
@@ -181,19 +183,31 @@ class DataCollector:
         logger.info(f"Fetching World Bank data for {len(countries)} countries")
         
         try:
-            # Convert dates to format expected by wbdata
-            start_date = datetime.strptime(self.start_date, "%Y-%m-%d").date()
-            end_date = datetime.strptime(self.end_date, "%Y-%m-%d").date()
+            # Get start and end years
+            start_year = datetime.strptime(self.start_date, "%Y-%m-%d").year
+            end_year = datetime.strptime(self.end_date, "%Y-%m-%d").year
             
-            # Fetch the data
+            # For World Bank API, we'll use a list of years to avoid format issues
+            years = list(range(start_year, end_year + 1))
+            
+            logger.info(f"Fetching World Bank data for years {start_year} to {end_year}")
+            
+            # Fetch the data without specifying date (we'll filter later)
             df = wbdata.get_dataframe(
                 indicators, 
-                country=countries, 
-                data_date=(start_date, end_date)
+                country=countries
             )
             
             # Process the dataframe to handle the multi-level index
             df = df.reset_index()
+            
+            # Filter to our date range if 'year' column exists
+            if 'year' in df.columns:
+                df = df[(df['year'] >= start_year) & (df['year'] <= end_year)]
+            elif 'date' in df.columns:
+                # Convert date strings to years for filtering
+                df['year'] = df['date'].apply(lambda x: int(str(x)[:4]))
+                df = df[(df['year'] >= start_year) & (df['year'] <= end_year)]
             
             # Save raw data
             output_path = os.path.join(self.data_dir, "world_bank_data.parquet")
@@ -298,6 +312,17 @@ class DataCollector:
 
 # Example usage
 if __name__ == "__main__":
+    # Print all environment variables for debugging
+    print("All environment variables:")
+    for key, value in os.environ.items():
+        if "API" in key:
+            print(f"{key}: {value[:4]}...")    
+    # Debug the API key
+    fred_key = os.environ.get("FRED_API_KEY", "")
+    print(f"FRED API key loaded: {'Yes' if fred_key else 'No'}")
+    if fred_key:
+        print(f"First 4 characters: {fred_key[:4]}")
+    
     # Define data to fetch
     tickers = ["SPY", "AGG", "VEA", "VWO", "GLD", "VNQ"]
     economic_indicators = ["GDP", "UNRATE", "CPIAUCSL", "FEDFUNDS", "T10Y2Y"]
